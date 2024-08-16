@@ -1,8 +1,11 @@
-// use std::error::Error;
 use std::str;
 use std::fs;
-use anyhow::Result;
+use anyhow::Error;
+use anyhow::{Result, Context};
 use dialoguer::{Input, Password};
+use reqwest::Client;
+use scraper::{Html, Selector};
+
 // use security_framework::passwords::{self, get_generic_password};
 // use clap::Parser;
 
@@ -16,9 +19,10 @@ const CONFIG_FILE_PATH: &str = "config.yml";
 pub struct Credential {
     account: String,
     password: String,
+    login_token: String,
 }
 
-pub fn login() -> Result<Credential> {
+pub async fn get_credential() -> Result<Credential> {
     let account;
     let file_result = fs::read(CONFIG_FILE_PATH);
     match file_result {
@@ -31,9 +35,11 @@ pub fn login() -> Result<Credential> {
         }
     }
     let password = get_password()?;
+    let login_token = get_login_token().await?;
     Ok(Credential {
         account: account,
         password: password,
+        login_token: login_token,
     })
 }
 
@@ -53,11 +59,33 @@ fn get_password() -> Result<String> {
     Ok(password)
 }
 
-// pub fn get_password(account: &str) -> MyResult<()> {
-//     let pass = get_generic_password(SERVICE, account)?;
-//     // save account
-//     fs::write("~/.config/red-panda/config.yml", account)?;
-//     let pass = str::from_utf8(&pass)?;
-//     println!("{}", pass);
-//     Ok(())
-// }
+// get login token
+pub async fn get_login_token() -> Result<String> {
+    // let url = "https://panda.ecs.kyoto-u.ac.jp/portal/login";
+    let url = "https://panda.ecs.kyoto-u.ac.jp/cas/login";
+    let client = Client::new();
+    let response = client
+        .get(url)
+        .send()
+        .await?;
+    let body = response.text().await?;
+    let body_parse = Html::parse_document(&body);
+    // TODO: remove unwrap()
+    let selector = Selector::parse("input[name='lt']").unwrap();
+    let lt_parse = body_parse.select(&selector)
+        .next()
+        .and_then(|input| input.value().attr("value"))
+        .context("Couldn't get login token");
+    match lt_parse {
+        Ok(lt) => {
+            println!("{}", lt);
+            Ok(lt.to_string())
+        },
+        Err(e) => Err(e),
+    }
+}
+
+pub fn login(credential: Credential) -> Result<()> {
+    println!("{:?}", credential);
+    Ok(())
+}

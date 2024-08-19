@@ -1,14 +1,13 @@
-use red_panda::get_login_token;
+use red_panda::{get_credential, login};
 use tokio;
+use anyhow::{Result, Context};
+use reqwest::{Client, RequestBuilder};
 
 #[tokio::main]
-async fn main() {
-    match get_login_token().await {
-        Ok(_) => println!(),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
-    }
-
+async fn main() -> Result<()> {
+    // let client = Client::new();
+    let client = Client::builder().cookie_store(true).build()?;
+    let credential = get_credential()?;
+    login(&client, credential).await?;
+    Ok(())
 }

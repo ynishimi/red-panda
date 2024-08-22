@@ -15,15 +15,15 @@ async fn main() -> Result<()> {
     }
     let favorite_courses = get_favorite_courses(&client).await?;
     let course_selection = select_site(&favorite_courses)?;
-    let site_content = get_site_content(&client, &favorite_courses.favorite_site_ids[course_selection]).await?;
+    let site_content = get_site_content(&client, &favorite_courses.favorite_courses[course_selection].site_id).await?;
     let site_content = site_content
         .get()
         .context("Content not available")?;
-    let child_selection = &site_content.resource_children;
+    let child_selection = site_content;
     let selection_children = select_child_site(&child_selection)?;
-    // println!("{:?}", site_content);
+    let resource_children = &child_selection.resource_children;
 
-    open_in_browser(&child_selection[selection_children].url)?;
+    open_in_browser(&resource_children[selection_children].url)?;
 
 
     // println!("{:?}", favorite_courses.favorite_site_ids);

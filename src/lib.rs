@@ -2,11 +2,12 @@ use std::str;
 use std::fs;
 // use anyhow::Error;
 use anyhow::{Result, Context};
-use dialoguer::{Input, Password, Select};
+use dialoguer::{Input, Password, Select, FuzzySelect};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::Deserialize;
 use open;
+// use serde_json::map;
 use std::time::Duration;
 use indicatif::ProgressBar;
 
@@ -23,9 +24,18 @@ pub struct Credential {
     password: String,
 }
 #[derive(Debug, Deserialize)]
-pub struct FavoriteCourses {
+struct FavoriteSiteIds {
     #[serde(rename = "favoriteSiteIds")]
     pub favorite_site_ids: Vec<String>,
+}
+#[derive(Debug)]
+pub struct FavoriteCourses {
+    pub favorite_courses: Vec<FavoriteCourse>,
+}
+#[derive(Debug)]
+pub struct FavoriteCourse {
+    pub name: String,
+    pub site_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,7 +72,7 @@ pub struct SiteContent {
 pub struct ResourceChildren {
     name: String,
     #[serde(rename = "mimeType")]
-    _mime_type: String,
+    _mime_type: Option<String>,
     // modified: String,
     pub url: String,
 }
@@ -185,21 +195,38 @@ pub async fn login(client: &Client, credential: &Credential) -> Result<String> {
 pub async fn get_favorite_courses(client: &Client) -> Result<FavoriteCourses> {
     let bar = ProgressBar::new_spinner().with_message("Getting courses...");
     bar.enable_steady_tick(Duration::from_millis(100));
-    // https://panda.ecs.kyoto-u.ac.jp/portal/favorites/list
-    let favorite_courses = client
+
+    let favorite_site_ids: FavoriteSiteIds = client
         .get(format!("{}/portal/favorites/list", BASE_URL))
         .send()
         .await?
-        .json::<FavoriteCourses>()
+        .json::<FavoriteSiteIds>()
         .await?;
     bar.finish_and_clear();
-    Ok(favorite_courses)
+
+    let mut favorite_courses: Vec<FavoriteCourse> = Vec::new();
+    let iter = favorite_site_ids.favorite_site_ids.iter();
+    for favorite_site_id in iter {
+        let site_content_collection = get_site_content(&client, favorite_site_id).await?;
+        let site_content = site_content_collection.get().context("No content")?;
+        let site_name = &site_content.name;
+        favorite_courses.push(FavoriteCourse {
+            name: site_name.to_string(),
+            site_id: favorite_site_id.to_string(),
+        }
+        );
+    }
+
+    // let favorite_courses: Vec<FavoriteCourse> = favorite_site_ids.favorite_site_ids.iter().map(|favorite_site_id| get_site_content(&client, favorite_site_id).await?).collect();
+    Ok(FavoriteCourses {
+        favorite_courses: favorite_courses,
+    })
 }
 
 pub async fn get_site_content(client: &Client, site_id: &String) -> Result<SiteContentCollection> {
     let bar = ProgressBar::new_spinner().with_message("Getting courses...");
     bar.enable_steady_tick(Duration::from_millis(100));
-    println!("{}",format!("{}/direct/content/resources/{}.json", BASE_URL, site_id));
+
     let site_content = client
         .get(format!("{}/direct/content/resources/{}.json", BASE_URL, site_id))
         .send()
@@ -210,23 +237,24 @@ pub async fn get_site_content(client: &Client, site_id: &String) -> Result<SiteC
     Ok(site_content)
 }
 pub fn select_site(favorite_courses: &FavoriteCourses) -> Result<usize> {
-    let items = &favorite_courses.favorite_site_ids;
-    let selection = Select::new()
+    let items: Vec<&str> = favorite_courses.favorite_courses.iter().map(|course| course.name.as_str()).collect();
+    let selection = FuzzySelect::new()
     .with_prompt("Choose course")
+    .highlight_matches(true)
     .default(0)
     .items(&items)
     .interact()?;
-    println!("You chose: {}", items[selection]); 
+    // println!("You chose: {}", items[selection]); 
     Ok(selection)
 }
 
-pub fn select_child_site(site_content_children: &Vec<ResourceChildren>) -> Result<usize> {
-    let items: Vec<&str> = site_content_children.iter().map(|child| child.name.as_str()).collect();
-    let selection = Select::new()
+pub fn select_child_site(site_content: &SiteContent) -> Result<usize> {
+    let items: Vec<&str> = site_content.resource_children.iter().map(|child| child.name.as_str()).collect();
+    let selection = FuzzySelect::new()
     .default(0)
     .items(&items)
     .interact()?;
-    println!("You chose: {}", items[selection]); 
+    // println!("You chose: {}", items[selection]); 
     Ok(selection)
 }
 

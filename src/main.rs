@@ -1,7 +1,7 @@
 use red_panda::{get_credential, get_favorite_courses, get_site_content, login, open_in_browser, select_child_site, select_site};
 use tokio;
 use anyhow::{Result, Context};
-use reqwest::{Client, RequestBuilder};
+use reqwest::Client;
 
 #[tokio::main]
 async fn main() -> Result<()> {

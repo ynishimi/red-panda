@@ -1,6 +1,6 @@
 use std::str;
 use std::fs;
-use anyhow::Error;
+// use anyhow::Error;
 use anyhow::{Result, Context};
 use dialoguer::{Input, Password, Select};
 use reqwest::Client;
@@ -11,6 +11,7 @@ use std::time::Duration;
 use indicatif::ProgressBar;
 
 const CONFIG_FILE_PATH: &str = "config.yml";
+const PASSWORD_FILE_PATH: &str = "password.yml";
 
 const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login?service=https%3A%2F%2Fpanda.ecs.kyoto-u.ac.jp%2Fsakai-login-tool%2Fcontainer";
 // const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login";
@@ -61,7 +62,7 @@ pub struct SiteContent {
 pub struct ResourceChildren {
     name: String,
     #[serde(rename = "mimeType")]
-    mime_type: String,
+    _mime_type: String,
     // modified: String,
     pub url: String,
 }
@@ -78,7 +79,17 @@ pub fn get_credential() -> Result<Credential> {
             account = get_account()?;
         }
     }
-    let password = get_password()?;
+    let password;
+    let password_file_result = fs::read(PASSWORD_FILE_PATH);
+    match password_file_result {
+        Ok(file_value) => {
+            password = String::from_utf8(file_value)?;
+        }
+        Err(_) => {
+            password = get_password()?;
+        }
+    }
+    // let password = get_password()?;
     Ok(Credential {
         account: account,
         password: password,
@@ -99,6 +110,9 @@ fn get_password() -> Result<String> {
     let password: String = Password::new()
         .with_prompt("Enter your password")
         .interact()?;
+
+    // TODO: delete this feature
+    fs::write(PASSWORD_FILE_PATH, &password)?;
     Ok(password)
 }
 
@@ -127,7 +141,7 @@ pub async fn get_login_token(client: &Client) -> Result<String> {
     }
 }
 
-pub async fn login(client: &Client, credential: &Credential) -> Result<(String)> {
+pub async fn login(client: &Client, credential: &Credential) -> Result<String> {
     let login_token = get_login_token(&client).await?;
     let params = [
         ("username", credential.account.as_str()),
@@ -141,7 +155,7 @@ pub async fn login(client: &Client, credential: &Credential) -> Result<(String)>
     let bar = ProgressBar::new_spinner().with_message("Logging in...");
     bar.enable_steady_tick(Duration::from_millis(100));
 
-    let res_login = client
+    let _res_login= client
         .post(LOGIN_URL)
         .form(&params)
         .send()
@@ -164,11 +178,11 @@ pub async fn login(client: &Client, credential: &Credential) -> Result<(String)>
         .context("Login failed")?;
 
     bar.finish_and_clear();
-    Ok((current_session))
+    Ok(current_session)
     // Ok(current_session)
 }
 
-pub async fn get_favorite_courses(client: &Client) -> Result<(FavoriteCourses)> {
+pub async fn get_favorite_courses(client: &Client) -> Result<FavoriteCourses> {
     let bar = ProgressBar::new_spinner().with_message("Getting courses...");
     bar.enable_steady_tick(Duration::from_millis(100));
     // https://panda.ecs.kyoto-u.ac.jp/portal/favorites/list

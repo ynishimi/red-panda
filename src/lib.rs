@@ -2,21 +2,29 @@ use std::str;
 use std::fs;
 use anyhow::Error;
 use anyhow::{Result, Context};
-use dialoguer::{Input, Password};
+use dialoguer::{Input, Password, Select};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::Deserialize;
+use open;
+use std::time::Duration;
+use indicatif::ProgressBar;
 
 const CONFIG_FILE_PATH: &str = "config.yml";
 
 const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login?service=https%3A%2F%2Fpanda.ecs.kyoto-u.ac.jp%2Fsakai-login-tool%2Fcontainer";
 // const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login";
-const BASE_URL: &str =  "https://panda.ecs.kyoto-u.ac.jp/direct";
+const BASE_URL: &str =  "https://panda.ecs.kyoto-u.ac.jp";
 
 #[derive(Debug)]
 pub struct Credential {
     account: String,
     password: String,
+}
+#[derive(Debug, Deserialize)]
+pub struct FavoriteCourses {
+    #[serde(rename = "favoriteSiteIds")]
+    pub favorite_site_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +37,34 @@ struct Session {
     user_eid: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SiteContentCollection {
+    content_collection: Vec<SiteContent>,
+}
+impl SiteContentCollection {
+    pub fn get(&self) -> Option<&SiteContent> {
+        self.content_collection.get(0)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SiteContent {
+    name: String,
+    #[serde(rename = "resourceChildren")]
+    pub resource_children: Vec<ResourceChildren>,
+    // #[serde(rename = "mimeType")]
+    // mime_type: String,
+    // modified: String,
+    // url: String,
+}
+#[derive(Debug, Deserialize)]
+pub struct ResourceChildren {
+    name: String,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+    // modified: String,
+    pub url: String,
+}
 
 pub fn get_credential() -> Result<Credential> {
     let account;
@@ -101,6 +137,10 @@ pub async fn login(client: &Client, credential: &Credential) -> Result<(String)>
         ("_eventId", "submit"),
         ("submit", "ログイン"),
     ];
+    
+    let bar = ProgressBar::new_spinner().with_message("Logging in...");
+    bar.enable_steady_tick(Duration::from_millis(100));
+
     let res_login = client
         .post(LOGIN_URL)
         .form(&params)
@@ -111,7 +151,7 @@ pub async fn login(client: &Client, credential: &Credential) -> Result<(String)>
     // // check if the login succeeded
     let res_session: SessionResponse = client
         // .get(BASE_URL.to_owned() + "/session.json")
-        .get(format!("{}/session.json", BASE_URL))
+        .get(format!("{}/direct/session.json", BASE_URL))
         .send()
         .await?
         .json()
@@ -122,6 +162,61 @@ pub async fn login(client: &Client, credential: &Credential) -> Result<(String)>
         .user_eid
         .clone()
         .context("Login failed")?;
+
+    bar.finish_and_clear();
     Ok((current_session))
     // Ok(current_session)
+}
+
+pub async fn get_favorite_courses(client: &Client) -> Result<(FavoriteCourses)> {
+    let bar = ProgressBar::new_spinner().with_message("Getting courses...");
+    bar.enable_steady_tick(Duration::from_millis(100));
+    // https://panda.ecs.kyoto-u.ac.jp/portal/favorites/list
+    let favorite_courses = client
+        .get(format!("{}/portal/favorites/list", BASE_URL))
+        .send()
+        .await?
+        .json::<FavoriteCourses>()
+        .await?;
+    bar.finish_and_clear();
+    Ok(favorite_courses)
+}
+
+pub async fn get_site_content(client: &Client, site_id: &String) -> Result<SiteContentCollection> {
+    let bar = ProgressBar::new_spinner().with_message("Getting courses...");
+    bar.enable_steady_tick(Duration::from_millis(100));
+    println!("{}",format!("{}/direct/content/resources/{}.json", BASE_URL, site_id));
+    let site_content = client
+        .get(format!("{}/direct/content/resources/{}.json", BASE_URL, site_id))
+        .send()
+        .await?
+        .json::<SiteContentCollection>()
+        .await?;
+    bar.finish_and_clear();
+    Ok(site_content)
+}
+pub fn select_site(favorite_courses: &FavoriteCourses) -> Result<usize> {
+    let items = &favorite_courses.favorite_site_ids;
+    let selection = Select::new()
+    .with_prompt("Choose course")
+    .default(0)
+    .items(&items)
+    .interact()?;
+    println!("You chose: {}", items[selection]); 
+    Ok(selection)
+}
+
+pub fn select_child_site(site_content_children: &Vec<ResourceChildren>) -> Result<usize> {
+    let items: Vec<&str> = site_content_children.iter().map(|child| child.name.as_str()).collect();
+    let selection = Select::new()
+    .default(0)
+    .items(&items)
+    .interact()?;
+    println!("You chose: {}", items[selection]); 
+    Ok(selection)
+}
+
+pub fn open_in_browser(url: &String) -> Result<()> {
+    open::that(url)?;
+    Ok(())
 }

@@ -17,6 +17,8 @@ const PASSWORD_FILE_PATH: &str = "password.yml";
 const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login?service=https%3A%2F%2Fpanda.ecs.kyoto-u.ac.jp%2Fsakai-login-tool%2Fcontainer";
 // const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login";
 const BASE_URL: &str =  "https://panda.ecs.kyoto-u.ac.jp";
+const SEMINAR_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/direct/content/resources/ae7eb08f-5eab-41d2-a8d8-229aac826b97/2024年度_定例セミナー%20_Weekly%20Seminar%202024_";
+
 
 #[derive(Debug)]
 pub struct Credential {
@@ -236,6 +238,19 @@ pub async fn get_site_content(client: &Client, site_id: &String) -> Result<SiteC
     bar.finish_and_clear();
     Ok(site_content)
 }
+
+// 定例セミナーの資料を取得
+pub async fn get_seminar_content(client: &Client) -> Result<SiteContentCollection> {
+    let site_content = client
+    .get(format!("{}.json", SEMINAR_URL))
+    .send()
+    .await?
+    .json::<SiteContentCollection>()
+    .await?;
+    Ok(site_content)
+
+}
+
 pub fn select_site(favorite_courses: &FavoriteCourses) -> Result<usize> {
     let items: Vec<&str> = favorite_courses.favorite_courses.iter().map(|course| course.name.as_str()).collect();
     let selection = FuzzySelect::new()

@@ -1,4 +1,4 @@
-use red_panda::{get_credential, get_favorite_courses, get_site_content, login, open_in_browser, select_child_site, select_site};
+use red_panda::{get_credential, get_favorite_courses, get_seminar_content, login, open_in_browser, select_child_site, select_site};
 use tokio;
 use anyhow::{Result, Context};
 use reqwest::Client;
@@ -13,13 +13,20 @@ async fn main() -> Result<()> {
         Ok(user) => println!("User: {}", user),
         Err(e) => eprintln!("{}", e),
     }
-    let favorite_courses = get_favorite_courses(&client).await?;
-    let course_selection = select_site(&favorite_courses)?;
-    let site_content = get_site_content(&client, &favorite_courses.favorite_courses[course_selection].site_id).await?;
-    let site_content = site_content
+    // let favorite_courses = get_favorite_courses(&client).await?;
+    // let course_selection = select_site(&favorite_courses)?;
+    // let site_content_collection = get_site_content(&client, &favorite_courses.favorite_courses[course_selection].site_id).await?;
+    // let site_content = site_content_collection
+    //     .get()
+    //     .context("Content not available")?;
+    
+    let seminar_content_collection = get_seminar_content(&client).await?;
+    let seminar_content = seminar_content_collection
         .get()
         .context("Content not available")?;
-    let child_selection = site_content;
+    
+
+    let child_selection = seminar_content;
     let selection_children = select_child_site(&child_selection)?;
     let resource_children = &child_selection.resource_children;
 

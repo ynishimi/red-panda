@@ -17,7 +17,7 @@ const PASSWORD_FILE_PATH: &str = "password.yml";
 const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login?service=https%3A%2F%2Fpanda.ecs.kyoto-u.ac.jp%2Fsakai-login-tool%2Fcontainer";
 // const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login";
 const BASE_URL: &str =  "https://panda.ecs.kyoto-u.ac.jp";
-const SEMINAR_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/direct/content/resources/ae7eb08f-5eab-41d2-a8d8-229aac826b97/2024年度_定例セミナー%20_Weekly%20Seminar%202024_";
+const SEMINAR_RESOURCE_ID: &str = "/group/ae7eb08f-5eab-41d2-a8d8-229aac826b97/2024年度_定例セミナー _Weekly Seminar 2024_/";
 
 
 #[derive(Debug)]
@@ -55,28 +55,42 @@ pub struct SiteContentCollection {
     content_collection: Vec<SiteContent>,
 }
 impl SiteContentCollection {
-    pub fn get(&self) -> Option<&SiteContent> {
-        self.content_collection.get(0)
+    pub fn get(&mut self) -> Option<&mut SiteContent> {
+        self.content_collection.get_mut(0)
     }
 }
 
+/// サイトの名前、子リソースを持つ
 #[derive(Debug, Deserialize)]
 pub struct SiteContent {
     name: String,
     #[serde(rename = "resourceChildren")]
-    pub resource_children: Vec<ResourceChildren>,
+    pub resource_children: Vec<ResourceChild>,
     // #[serde(rename = "mimeType")]
     // mime_type: String,
     // modified: String,
-    // url: String,
+    pub url: String,
 }
+impl SiteContent {
+    pub fn set_url_parent(&mut self) {
+        for child in &mut self.resource_children {
+            child.url_parent = Some(self.url.clone());
+        }
+    }
+}
+
+/// 親(SiteContent) が持つ子リソースの名前、ファイルタイプ、URL
 #[derive(Debug, Deserialize)]
-pub struct ResourceChildren {
+pub struct ResourceChild {
     name: String,
     #[serde(rename = "mimeType")]
     _mime_type: Option<String>,
     // modified: String,
+    #[serde(rename = "resourceId")]
+    pub resource_id: String,
     pub url: String,
+    #[serde(skip)]
+    pub url_parent: Option<String>,
 }
 
 pub fn get_credential() -> Result<Credential> {
@@ -109,23 +123,23 @@ pub fn get_credential() -> Result<Credential> {
     })
 }
 
-fn get_account() -> Result<String> {
+/// テキストをプロンプト経由で受け取り、file_pathに書き込む。
+/// 成功したら `Ok` を返す。
+fn get_from_file(prompt: &str, filepath: &str) -> Result<String> {
     let account: String = Input::new()
-        .with_prompt("Enter your ECS-ID")
-        .interact_text()?;
-
-    fs::write(CONFIG_FILE_PATH, &account)?;
+    .with_prompt(prompt)
+    .interact_text()?;
+    fs::write(filepath, &account)?;
     Ok(account)
 }
 
+/// Get ECS-ID from a user and save it
+fn get_account() -> Result<String> {
+    get_from_file("Enter your ECS-ID", CONFIG_FILE_PATH)
+}
+/// Get password from a user and save it
 fn get_password() -> Result<String> {
-    let password: String = Password::new()
-        .with_prompt("Enter your password")
-        .interact()?;
-
-    // TODO: delete this feature
-    fs::write(PASSWORD_FILE_PATH, &password)?;
-    Ok(password)
+    get_from_file("Enter your password", PASSWORD_FILE_PATH)
 }
 
 // get login token
@@ -209,7 +223,7 @@ pub async fn get_favorite_courses(client: &Client) -> Result<FavoriteCourses> {
     let mut favorite_courses: Vec<FavoriteCourse> = Vec::new();
     let iter = favorite_site_ids.favorite_site_ids.iter();
     for favorite_site_id in iter {
-        let site_content_collection = get_site_content(&client, favorite_site_id).await?;
+        let mut site_content_collection = get_site_content(&client, favorite_site_id).await?;
         let site_content = site_content_collection.get().context("No content")?;
         let site_name = &site_content.name;
         favorite_courses.push(FavoriteCourse {
@@ -239,22 +253,38 @@ pub async fn get_site_content(client: &Client, site_id: &String) -> Result<SiteC
     Ok(site_content)
 }
 
-// 定例セミナーの資料を取得
-pub async fn get_seminar_content(client: &Client) -> Result<SiteContentCollection> {
+// 指定されたURLのリソースを取得
+pub async fn get_url_content(client: &Client, url: &String) -> Result<SiteContentCollection> {
+    let bar = ProgressBar::new_spinner().with_message("Getting courses...");
+    bar.enable_steady_tick(Duration::from_millis(100));
+
     let site_content = client
-    .get(format!("{}.json", SEMINAR_URL))
+        .get(format!("{}/direct/content/resources/{}.json", BASE_URL, url))
+        .send()
+        .await?
+        .json::<SiteContentCollection>()
+        .await?;
+    bar.finish_and_clear();
+    Ok(site_content)
+}
+
+// 指定されたresource_idの資料を取得
+pub async fn get_resource_id_content(client: &Client, resource_id: &str) -> Result<SiteContentCollection> {
+    let site_content = client
+    .get(format!("{}/direct/content/resources{}.json", BASE_URL, resource_id))
+
+    // .get(format!("{}.json", SEMINAR_URL))
     .send()
     .await?
     .json::<SiteContentCollection>()
     .await?;
     Ok(site_content)
-
 }
 
 pub fn select_site(favorite_courses: &FavoriteCourses) -> Result<usize> {
     let items: Vec<&str> = favorite_courses.favorite_courses.iter().map(|course| course.name.as_str()).collect();
     let selection = FuzzySelect::new()
-    .with_prompt("Choose course")
+    .with_prompt("Select course")
     .highlight_matches(true)
     .default(0)
     .items(&items)
@@ -266,10 +296,21 @@ pub fn select_site(favorite_courses: &FavoriteCourses) -> Result<usize> {
 pub fn select_child_site(site_content: &SiteContent) -> Result<usize> {
     let items: Vec<&str> = site_content.resource_children.iter().map(|child| child.name.as_str()).collect();
     let selection = FuzzySelect::new()
+    .with_prompt("Select item or type to search: ")
     .default(0)
     .items(&items)
     .interact()?;
-    // println!("You chose: {}", items[selection]); 
+    Ok(selection)
+}
+
+/// 子リソースからひとつ選択する。選択した場合は `Some(番号)`, 戻る場合は`None`を返す
+pub fn select_child_site_with_opt(site_content: &SiteContent) -> Result<Option<usize>> {
+    let items: Vec<&str> = site_content.resource_children.iter().map(|child| child.name.as_str()).collect();
+    let selection = FuzzySelect::new()
+    .with_prompt("Select item or type to search: ")
+    .default(0)
+    .items(&items)
+    .interact_opt()?;
     Ok(selection)
 }
 

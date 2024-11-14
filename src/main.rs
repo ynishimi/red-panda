@@ -34,17 +34,18 @@ async fn main() -> Result<()> {
     let child_number = select_child_site(&seminar_content)?;
     let child_site = &seminar_content.resource_children[child_number];
 
-    // 子以下のリソースを取得
-    let mut content_collection = get_resource_id_content(&client, &child_site.resource_id).await?;
-    let content = content_collection
-    .get()
-    .context("Content not available")?;
-    // 一つ選ぶ
-    let content_number = select_child_site(&content)?;
-    let site = &content.resource_children[content_number];
+    loop {
+        // 子以下のリソースを取得
+        let mut content_collection = get_resource_id_content(&client, &child_site.resource_id).await?;
+        let content = content_collection
+        .get()
+        .context("Content not available")?;
+        // 一つ選ぶ
+        let content_number = select_child_site(&content)?;
+        let site = &content.resource_children[content_number];
 
-
-    open_in_browser(&site.url)?;
+        open_in_browser(&site.url)?;
+    }
 
 
     // println!("{:?}", favorite_courses.favorite_site_ids);
@@ -56,5 +57,5 @@ async fn main() -> Result<()> {
     //         // println!("{}", res);
     //     // }
     // }
-    Ok(())
+    // Ok(())
 }

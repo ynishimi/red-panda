@@ -2,8 +2,7 @@ use std::str;
 use std::fs;
 // use anyhow::Error;
 use anyhow::{Result, Context};
-use dialoguer::{Input, FuzzySelect};
-use reqwest::Client;
+use dialoguer::{Input, Password, FuzzySelect};use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::Deserialize;
 use open;
@@ -123,21 +122,31 @@ pub fn get_credential() -> Result<Credential> {
 
 /// テキストをプロンプト経由で受け取り、file_pathに書き込む。
 /// 成功したら `Ok` を返す。
-fn get_from_file(prompt: &str, filepath: &str) -> Result<String> {
-    let account: String = Input::new()
-    .with_prompt(prompt)
-    .interact_text()?;
+fn get_from_file(prompt: &str, filepath: &str, show_text: bool) -> Result<String> {
+    let account: String;
+    match show_text {
+        true => {
+            account = Input::new()
+            .with_prompt(prompt)
+            .interact_text()?;
+        },
+        false => {
+            account = Password::new()
+            .with_prompt(prompt)
+            .interact()?;
+        }
+    }
     fs::write(filepath, &account)?;
     Ok(account)
 }
 
 /// Get ECS-ID from a user and save it
 fn get_account() -> Result<String> {
-    get_from_file("Enter your ECS-ID", CONFIG_FILE_PATH)
+    get_from_file("Enter your ECS-ID", CONFIG_FILE_PATH, true)
 }
 /// Get password from a user and save it
 fn get_password() -> Result<String> {
-    get_from_file("Enter your password", PASSWORD_FILE_PATH)
+    get_from_file("Enter your password", PASSWORD_FILE_PATH,false)
 }
 
 // get login token

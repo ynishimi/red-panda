@@ -2,7 +2,7 @@ use std::str;
 use std::fs;
 // use anyhow::Error;
 use anyhow::{Result, Context};
-use dialoguer::{Input, Password, Select, FuzzySelect};
+use dialoguer::{Input, FuzzySelect};
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde::Deserialize;
@@ -17,8 +17,6 @@ const PASSWORD_FILE_PATH: &str = "password.yml";
 const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login?service=https%3A%2F%2Fpanda.ecs.kyoto-u.ac.jp%2Fsakai-login-tool%2Fcontainer";
 // const LOGIN_URL: &str = "https://panda.ecs.kyoto-u.ac.jp/cas/login";
 const BASE_URL: &str =  "https://panda.ecs.kyoto-u.ac.jp";
-const SEMINAR_RESOURCE_ID: &str = "/group/ae7eb08f-5eab-41d2-a8d8-229aac826b97/2024年度_定例セミナー _Weekly Seminar 2024_/";
-
 
 #[derive(Debug)]
 pub struct Credential {

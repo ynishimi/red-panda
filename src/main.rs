@@ -1,4 +1,4 @@
-use red_panda::{get_credential, get_favorite_courses, get_resource_id_content, login, open_in_browser, select_child_site, select_site, ResourceChild};
+use red_panda::{get_credential, get_resource_id_content, login, open_in_browser, select_child_site};
 use tokio;
 use anyhow::{Result, Context};
 use reqwest::Client;
